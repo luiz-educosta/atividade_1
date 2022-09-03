@@ -69,21 +69,22 @@ static void prvTask_getChar(void *pvParameters)
         int stop = 0;
         key = getchar();
         
-        
         switch (key)
         {
 
         case '+':
-            // Voltar ao funcionamento normal quando pressionado o “+”!
-            //colocao taskresume para o led verde
-            
-            //stop = 1;
+            /* Voltar ao funcionamento normal quando pressionado o “+”!*/
+
+            vTaskResume(ledGreenTask_hdlr); //Transfere a task do modo Suspended para o modo Ready
+            xTaskNotify(ledfunctionTask_hdlr, 2, eSetValueWithOverwrite); //atualizando a variavel da função do led
             break;
 
         case '*':
-            // Caso o usuário pressione a tecla “*”, o LED vermelho deverá ficar aceso e o LED verde deve parar de piscar (apagado);
-            //coloca o contrario do task resume para parar a task e o led
-            //stop = 1;
+            /* Caso o usuário pressione a tecla “*”, o LED vermelho deverá ficar aceso e o LED verde deve parar de piscar (apagado);*/
+
+            vTaskSuspend(ledGreenTask_hdlr); //Transfere a task do modo Ready para o modo Suspended
+            xTaskNotify(ledfunctionTask_hdlr, 1, eSetValueWithOverwrite); //atualizando a variavel da função do led
+
             break;
 
         case '0':
@@ -129,7 +130,6 @@ static void prvTask_getChar(void *pvParameters)
         case 'k':
             stop = 1;
             break;
-      
         }
         
         if (stop)
@@ -152,7 +152,6 @@ static void prvTask_led(void *pvParameters)
 
     for (;;)
     {
-
         gotoxy(led->pos, 2);
         printf("%s⬤", led->color);
         fflush(stdout);
@@ -171,7 +170,7 @@ static void prvTask_led(void *pvParameters)
 static void prvTask_ledfunction(void *pvParameters)
 {
     uint32_t notificationValue;
-    uint32_t stop_var_aux = 0; //variável auxiliar 
+    uint32_t stop_var_aux = 0; //variável auxiliar para controle de funções
 
     for (;;)
     {
@@ -180,26 +179,43 @@ static void prvTask_ledfunction(void *pvParameters)
                 ULONG_MAX,
                 &notificationValue,
                 portMAX_DELAY))
-        {
-            gotoxy(2, 4);
-            if (notificationValue == 1)
+        {        
+            if (notificationValue == 2)
             {
-                // Caso o usuário pressione a tecla “*”, o LED vermelho deverá ficar aceso e o LED verde deve parar de piscar (apagado);
-                stop_var_aux = 0;
-            }
-            else if (notificationValue == 2)
-            {
-                // Voltar ao funcionamento normal quando pressionado o “+”!
+                /*Voltar ao funcionamento normal quando pressionado o “+”!*/
 
+                stop_var_aux = 0;// libera para poder usar as outras funções
+
+                //apagando led vermelho
+                gotoxy(red.pos, 2);
+                printf("%s ", BLACK);
+                fflush(stdout);
             }
-            else 
+            else if (notificationValue == 1 && stop_var_aux == 0)
             {
-                // O LED vermelho deverá piscar (acender por 100ms e apagar) a cada vez que o usuário digitar um número;
+                /*Caso o usuário pressione a tecla “*”, o LED vermelho deverá ficar aceso e o LED verde deve parar de piscar (apagado);*/
+
+                stop_var_aux = 1; // travando todas as outras funções
+
+                //apagando led verde
+                gotoxy(green.pos, 2);
+                printf("%s ", BLACK);
+                fflush(stdout);
+
+                //acendendo o led vermelho
                 gotoxy(red.pos, 2);
                 printf("%s⬤", red.color);
                 fflush(stdout);
-                vTaskDelay(red.period_ms / portTICK_PERIOD_MS);
+ 
+            }
+            else if (notificationValue == 3 && stop_var_aux == 0)
+            {
+                /* O LED vermelho deverá piscar (acender por 100ms e apagar) a cada vez que o usuário digitar um número;*/
 
+                gotoxy(red.pos, 2);
+                printf("%s⬤", red.color);
+                fflush(stdout);
+                vTaskDelay(red.period_ms / portTICK_PERIOD_MS);//piscando o led vermelho por 100ms
                 gotoxy(red.pos, 2);
                 printf("%s ", BLACK);
                 fflush(stdout);
@@ -208,7 +224,6 @@ static void prvTask_ledfunction(void *pvParameters)
     }
     vTaskDelete(NULL);
 }
-
 
 void app_run(void)
 {
@@ -220,19 +235,15 @@ void app_run(void)
         "║                 ║\n"
         "╚═════════════════╝\n");
 
-    
-    xTaskCreate(prvTask_led, "LED_green", configMINIMAL_STACK_SIZE, &green, TASK1_PRIORITY, NULL);
-    //xTaskCreate(prvTask_getChar, "Get_key", configMINIMAL_STACK_SIZE, NULL, TASK2_PRIORITY, NULL);
+    xTaskCreate(prvTask_led, "LED_green", configMINIMAL_STACK_SIZE, &green, TASK1_PRIORITY, &ledGreenTask_hdlr);
+
+    xTaskCreate(prvTask_ledfunction, "LED_Function", configMINIMAL_STACK_SIZE, NULL, TASK2_PRIORITY, &ledfunctionTask_hdlr);
+
     xTaskCreate(prvTask_getChar, "Get_key", configMINIMAL_STACK_SIZE, NULL, TASK3_PRIORITY, NULL);
 
     /* Start the tasks and timer running. */
     vTaskStartScheduler();
 
-    /* If all is well, the scheduler will now be running, and the following
-     * line will never be reached.  If the following line does execute, then
-     * there was insufficient FreeRTOS heap memory available for the idle and/or
-     * timer tasks      to be created.  See the memory management section on the
-     * FreeRTOS web site for more details. */
     for (;;)
     {
     }
